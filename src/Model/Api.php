@@ -379,7 +379,7 @@ class Api
     /**
      * Language the document is requested in, part of the cache key
      *
-     * @param array $options
+     * @param mixed[] $options
      * @return string
      * @throws NoSuchEntityException
      */
@@ -391,7 +391,7 @@ class Api
     /**
      * Store and website the document is requested for, the rest of the cache key
      *
-     * @return array
+     * @return int[]
      * @throws NoSuchEntityException
      */
     private function getScope(): array

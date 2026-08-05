@@ -99,49 +99,6 @@ class CacheManager
         }
     }
 
-    public function invalidate(
-        ?string $type = null,
-        ?string $uid = null,
-        ?int $storeId = null,
-        ?int $websiteId = null
-    ): void {
-        if (!$this->cacheState->isEnabled(CacheTypes::TYPE_DOCUMENTS)) {
-            return;
-        }
-
-        try {
-            if ($type === null) {
-                // Invalidate all Prismic documents
-                $this->cache->clean([CacheTypes::TAG_DOCUMENTS]);
-                return;
-            }
-
-            if ($uid === null) {
-                // Invalidate all documents of a specific type (optionally for specific store/website)
-                if ($storeId !== null && $websiteId !== null) {
-                    // Invalidate specific store/website combination
-                    $tags = [sprintf(CacheTypes::TAG_DOCUMENT_ITEM, $storeId, $websiteId, $type, '*')];
-                } else {
-                    // Invalidate all stores/websites for this type
-                    $tags = [sprintf(CacheTypes::TAG_DOCUMENT_ITEM, '*', '*', $type, '*')];
-                }
-                $this->cache->clean($tags);
-                return;
-            }
-
-            // Invalidate specific document
-            if ($storeId !== null && $websiteId !== null) {
-                // Invalidate specific document in specific store/website
-                $tags = [$this->buildItemTag($type, $uid, $storeId, $websiteId)];
-            } else {
-                // Invalidate specific document across all stores/websites
-                $tags = [sprintf(CacheTypes::TAG_DOCUMENT_ITEM, '*', '*', $type, $uid)];
-            }
-            $this->cache->clean($tags);
-        } catch (Exception) {
-        }
-    }
-
     /**
      * Documents are only cached for regular visitors.
      *
