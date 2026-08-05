@@ -33,7 +33,14 @@ The Prismic webhook clears it when you publish, so editors do not wait for it to
 Without it the module still works, every page simply asks the API again, and there is no fallback
 while the repository is unavailable.
 
-### 3. Check classes that extend `Block\StaticBlock`
+### 3. Check code that builds or extends the changed classes
+
+`Model\Api` gained three constructor arguments since 4.1.6: a logger, the document cache manager and
+`Model\Api\State`. Dependency injection resolves them, so injecting the model needs no changes.
+Anything that constructs it by hand, or extends it and calls `parent::__construct()`, has to pass
+them.
+
+#### Subclasses of `Block\StaticBlock`
 
 ```bash
 grep -rn "extends StaticBlock" app/code
@@ -64,7 +71,19 @@ Layout XML passes those arguments by name and needs no changes.
 **A page survives an unreachable repository.** Content comes from Prismic; while the repository is
 down or locked, documents are served from the document cache for up to 24 hours; after that a page
 forwards to noroute and blocks render empty. An unreachable repository no longer produces an error
-page.
+page: the api/v2 call is covered by error handling, where previously only the document queries were.
+
+**One unreachable repository no longer breaks the other stores.** The alternate links block collects
+documents across all stores, and creating the api for another store's repository was not covered by
+its try/catch. In a multi-repo setup a single failing repository therefore broke every page of every
+store, including stores whose own repository was perfectly healthy. A store whose repository fails is
+now skipped and the rest keep their links.
+
+**A document that cannot be loaded is logged instead of taking the page down.** Reporting a missing
+document went through code that resolved the block reference a second time and threw an exception of
+its own while doing so, before deciding whether exceptions may be thrown at all. That happened in
+every application mode, so in production one document that could not be loaded took the whole page
+with it.
 
 **Documents are cached in more places than before.** Caching moved into `Model\Api`, so linked
 documents in slices are cached too. Those used to be fetched live on every request, and can now be
@@ -81,6 +100,12 @@ warnings. The next request after that minute tries the API again, so recovery ne
 **Responses that are missing content are not cached.** A page rendered without its Prismic content is
 kept out of the full page cache and gets `no-store` headers, so an empty page does not outlive the
 outage.
+
+## What you see in the log
+
+During an outage, one `warning` per request naming the repository that failed, and a `debug` line per
+block that could not be rendered. Previously an outage produced one warning per document lookup,
+which on a page with many Prismic blocks buried everything else.
 
 ## Removed
 
