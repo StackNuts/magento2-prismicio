@@ -23,11 +23,6 @@ class CacheTypes extends TagScope
     public const TAG_DOCUMENTS = 'PRISMICIO_DOCUMENTS';
 
     /**
-     * Cache tag pattern for specific document items: PRISMICIO_DOC_ITEM_{type}_{uid}
-     */
-    public const TAG_DOCUMENT_ITEM = 'PRISMICIO_DOC_ITEM_%s_%s';
-
-    /**
      * @param FrontendPool $cacheFrontendPool
      */
     public function __construct(FrontendPool $cacheFrontendPool)

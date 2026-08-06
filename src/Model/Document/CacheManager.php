@@ -12,6 +12,8 @@ use Exception;
 use Magento\Framework\App\Cache\StateInterface;
 use Magento\Framework\App\CacheInterface;
 use Magento\Framework\Serialize\SerializerInterface;
+use Magento\Framework\Stdlib\CookieManagerInterface;
+use Prismic\Api as PrismicApi;
 use stdClass;
 
 class CacheManager
@@ -23,6 +25,7 @@ class CacheManager
         private readonly CacheInterface $cache,
         private readonly SerializerInterface $serializer,
         private readonly StateInterface $cacheState,
+        private readonly CookieManagerInterface $cookieManager,
         private readonly array $defaultConfig = []
     ) {
     }
@@ -34,7 +37,7 @@ class CacheManager
         int $storeId,
         int $websiteId
     ): mixed {
-        if (!$this->cacheState->isEnabled(CacheTypes::TYPE_DOCUMENTS)) {
+        if (!$this->isEnabled()) {
             return null;
         }
 
@@ -68,7 +71,7 @@ class CacheManager
         int $storeId,
         int $websiteId
     ): void {
-        if (!$this->cacheState->isEnabled(CacheTypes::TYPE_DOCUMENTS)) {
+        if (!$this->isEnabled()) {
             return;
         }
 
@@ -96,47 +99,30 @@ class CacheManager
         }
     }
 
-    public function invalidate(
-        ?string $type = null,
-        ?string $uid = null,
-        ?int $storeId = null,
-        ?int $websiteId = null
-    ): void {
+    /**
+     * Documents are only cached for regular visitors.
+     *
+     * In a preview the SDK resolves a ref from the preview cookie, which the cache key does not
+     * know about, so caching would show an editor the published document instead of the preview.
+     */
+    private function isEnabled(): bool
+    {
         if (!$this->cacheState->isEnabled(CacheTypes::TYPE_DOCUMENTS)) {
-            return;
+            return false;
         }
 
-        try {
-            if ($type === null) {
-                // Invalidate all Prismic documents
-                $this->cache->clean([CacheTypes::TAG_DOCUMENTS]);
-                return;
-            }
+        return !$this->hasPreviewCookie();
+    }
 
-            if ($uid === null) {
-                // Invalidate all documents of a specific type (optionally for specific store/website)
-                if ($storeId !== null && $websiteId !== null) {
-                    // Invalidate specific store/website combination
-                    $tags = [sprintf(CacheTypes::TAG_DOCUMENT_ITEM, $storeId, $websiteId, $type, '*')];
-                } else {
-                    // Invalidate all stores/websites for this type
-                    $tags = [sprintf(CacheTypes::TAG_DOCUMENT_ITEM, '*', '*', $type, '*')];
-                }
-                $this->cache->clean($tags);
-                return;
+    private function hasPreviewCookie(): bool
+    {
+        foreach ([str_replace(['.', ' '], '_', PrismicApi::PREVIEW_COOKIE), PrismicApi::PREVIEW_COOKIE] as $name) {
+            if ($this->cookieManager->getCookie($name) !== null) {
+                return true;
             }
-
-            // Invalidate specific document
-            if ($storeId !== null && $websiteId !== null) {
-                // Invalidate specific document in specific store/website
-                $tags = [$this->buildItemTag($type, $uid, $storeId, $websiteId)];
-            } else {
-                // Invalidate specific document across all stores/websites
-                $tags = [sprintf(CacheTypes::TAG_DOCUMENT_ITEM, '*', '*', $type, $uid)];
-            }
-            $this->cache->clean($tags);
-        } catch (Exception) {
         }
+
+        return false;
     }
 
     private function buildKey(

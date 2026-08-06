@@ -7,28 +7,22 @@ use Elgentos\PrismicIO\Exception\ApiNotEnabledException;
 use Elgentos\PrismicIO\Exception\ContextNotFoundException;
 use Elgentos\PrismicIO\Exception\DocumentNotFoundException;
 use Elgentos\PrismicIO\Model\Api;
-use Elgentos\PrismicIO\Model\Document\CacheManager;
 use Elgentos\PrismicIO\ViewModel\DocumentResolver;
 use Elgentos\PrismicIO\ViewModel\LinkResolver;
 use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Framework\View\Element\Context;
-use Magento\Store\Model\StoreManagerInterface;
 use stdClass;
 
 class StaticBlock extends AbstractBlock
 {
     private string $contentType;
     private ?string $identifier;
-    private CacheManager $cacheManager;
-    private StoreManagerInterface $storeManager;
 
     public function __construct(
         Context                  $context,
         DocumentResolver         $documentResolver,
         LinkResolver             $linkResolver,
         private readonly Api     $api,
-        CacheManager             $cacheManager,
-        StoreManagerInterface    $storeManager,
         string                   $contentType = 'static_block',
         ?string                  $identifier = null,
         array                    $data = []
@@ -42,8 +36,6 @@ class StaticBlock extends AbstractBlock
 
         $this->contentType = $contentType;
         $this->identifier = $identifier;
-        $this->cacheManager = $cacheManager;
-        $this->storeManager = $storeManager;
     }
 
     /**
@@ -131,35 +123,17 @@ class StaticBlock extends AbstractBlock
         $type = $context->type ?? '';
         $lang = $context->lang ?? '';
 
-        // Get store and website info
-        $store = $this->storeManager->getStore();
-        $storeId = (int)$store->getId();
-        $websiteId = (int)$store->getWebsiteId();
-
-        // Try to get document from cache
-        $document = $this->cacheManager->get($type, $uid, $lang, $storeId, $websiteId);
-
-        // If not cached, fetch from API and cache it
-        if ($document === null) {
-            $document = $this->api->getDocumentByUid($uid, $type, ['lang' => $lang]);
-
-            if (! $document) {
-                StaticBlockNotFoundException::throwException(
-                    $this,
-                    [
-                        'uid' => $uid,
-                        'content_type' => $type,
-                        'language' => $lang,
-                    ]
-                );
-                return false;
-            }
-
-            // Cache the document for next request
-            $this->cacheManager->set($document, $type, $uid, $lang, $storeId, $websiteId);
-        }
-
+        $document = $this->api->getDocumentByUid($uid, $type, ['lang' => $lang]);
         if (! $document) {
+            StaticBlockNotFoundException::throwException(
+                $this,
+                [
+                    'uid' => $uid,
+                    'content_type' => $type,
+                    'language' => $lang,
+                ]
+            );
+
             return false;
         }
 

@@ -17,4 +17,14 @@
             </argument>
         </arguments>
     </type>
+
+    <type name="Magento\Framework\App\PageCache\Kernel">
+        <plugin name="prismicio_skip_incomplete_response"
+                type="Elgentos\PrismicIO\Plugin\PageCache\SkipIncompleteResponse"/>
+    </type>
+
+    <type name="Magento\Framework\App\Response\Http">
+        <plugin name="prismicio_no_store_for_incomplete_response"
+                type="Elgentos\PrismicIO\Plugin\Response\NoStoreForIncompleteResponse"/>
+    </type>
 </config>

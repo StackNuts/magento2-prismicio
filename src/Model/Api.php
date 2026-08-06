@@ -10,7 +10,10 @@ namespace Elgentos\PrismicIO\Model;
 
 use Elgentos\PrismicIO\Api\ConfigurationInterface;
 use Elgentos\PrismicIO\Exception\ApiNotEnabledException;
+use Elgentos\PrismicIO\Exception\ApiUnavailableException;
 use Elgentos\PrismicIO\Model\Api\CacheProxy;
+use Elgentos\PrismicIO\Model\Api\State;
+use Elgentos\PrismicIO\Model\Document\CacheManager;
 use Exception;
 use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Store\Model\StoreManagerInterface;
@@ -18,9 +21,15 @@ use Prismic\Api as PrismicApi;
 use Prismic\Exception\ExceptionInterface as PrismicException;
 use Psr\Log\LoggerInterface;
 use stdClass;
+use Throwable;
 
 class Api
 {
+    /**
+     * Cache key prefix for documents that are looked up by id instead of by uid
+     */
+    private const CACHE_TYPE_BY_ID = 'by_id';
+
     private ConfigurationInterface $configuration;
 
     private StoreManagerInterface $storeManager;
@@ -29,17 +38,25 @@ class Api
 
     private LoggerInterface $logger;
 
+    private CacheManager $cacheManager;
+
+    private State $state;
+
 
     public function __construct(
         ConfigurationInterface $configuration,
         StoreManagerInterface $storeManager,
         CacheProxy $cacheProxy,
         LoggerInterface $logger,
+        CacheManager $cacheManager,
+        State $state,
     ) {
         $this->configuration = $configuration;
         $this->storeManager = $storeManager;
         $this->cacheProxy = $cacheProxy;
         $this->logger = $logger;
+        $this->cacheManager = $cacheManager;
+        $this->state = $state;
     }
 
     /**
@@ -209,15 +226,26 @@ class Api
             throw new ApiNotEnabledException;
         }
 
+        if ($this->state->isUnavailable()) {
+            // Calling a repository that just failed only costs time, every document again
+            throw new ApiUnavailableException('The Prismic API failed recently');
+        }
+
         $apiEndpoint = $configuration->getApiEndpoint($store);
         $apiSecret = $configuration->getApiSecret($store);
 
-        return PrismicApi::get(
-            $apiEndpoint,
-            $apiSecret,
-            null,
-            $this->cacheProxy
-        );
+        try {
+            return PrismicApi::get(
+                $apiEndpoint,
+                $apiSecret,
+                null,
+                $this->cacheProxy
+            );
+        } catch (PrismicException $exception) {
+            $this->state->markUnavailable($exception);
+
+            throw $exception;
+        }
     }
 
     /**
@@ -233,6 +261,12 @@ class Api
     public function getDocumentByUid(string $uid, ?string $contentType = null, array $options = []): ?stdClass
     {
         $contentType = $contentType ?? $this->getDefaultContentType();
+        $language = $this->getLanguage($options);
+
+        $cached = $this->cacheManager->get($contentType, $uid, $language, ...$this->getScope());
+        if ($cached !== null) {
+            return $cached;
+        }
 
         try {
             $api = $this->create();
@@ -243,16 +277,20 @@ class Api
             }
 
             $document = $api->getByUID($contentType, $uid, $this->getOptions($options));
-            if ($document || ! $this->isFallbackAllowed()) {
-                return $document;
+            if (! $document && $this->isFallbackAllowed()) {
+                $document = $api->getByUID($contentType, $uid, $this->getOptionsLanguageFallback($options));
             }
-
-            return $api->getByUID($contentType, $uid, $this->getOptionsLanguageFallback($options));
-        } catch (PrismicException $exception) {
+        } catch (ApiUnavailableException | PrismicException $exception) {
             $this->logApiFailure($exception);
 
             return null;
         }
+
+        if ($document) {
+            $this->cacheManager->set($document, $contentType, $uid, $language, ...$this->getScope());
+        }
+
+        return $document;
     }
 
     /**
@@ -267,6 +305,13 @@ class Api
     public function getSingleton(?string $contentType = null, array $options = []): ?stdClass
     {
         $contentType = $contentType ?? $this->getDefaultContentType();
+        $language = $this->getLanguage($options);
+
+        // A singleton has no uid of its own, the content type identifies it
+        $cached = $this->cacheManager->get($contentType, $contentType, $language, ...$this->getScope());
+        if ($cached !== null) {
+            return $cached;
+        }
 
         try {
             $api = $this->create();
@@ -282,16 +327,20 @@ class Api
                 return null;
             }
 
-            if ($document || ! $this->isFallbackAllowed()) {
-                return $document;
+            if (! $document && $this->isFallbackAllowed()) {
+                $document = $api->getSingle($contentType, $this->getOptionsLanguageFallback($options));
             }
-
-            return $api->getSingle($contentType, $this->getOptionsLanguageFallback($options));
-        } catch (PrismicException $exception) {
+        } catch (ApiUnavailableException | PrismicException $exception) {
             $this->logApiFailure($exception);
 
             return null;
         }
+
+        if ($document) {
+            $this->cacheManager->set($document, $contentType, $contentType, $language, ...$this->getScope());
+        }
+
+        return $document;
     }
 
     /**
@@ -305,25 +354,66 @@ class Api
      */
     public function getDocumentById(string $id, array $options = []): ?stdClass
     {
+        $language = $this->getLanguage($options);
+
+        $cached = $this->cacheManager->get(self::CACHE_TYPE_BY_ID, $id, $language, ...$this->getScope());
+        if ($cached !== null) {
+            return $cached;
+        }
+
         try {
-            return $this->create()->getByID($id, $this->getOptions($options));
-        } catch (PrismicException $exception) {
+            $document = $this->create()->getByID($id, $this->getOptions($options));
+        } catch (ApiUnavailableException | PrismicException $exception) {
             $this->logApiFailure($exception);
 
             return null;
         }
+
+        if ($document) {
+            $this->cacheManager->set($document, self::CACHE_TYPE_BY_ID, $id, $language, ...$this->getScope());
+        }
+
+        return $document;
     }
 
     /**
-     * An unreachable repository means the document cannot be delivered, it is not a fatal error
+     * Language the document is requested in, part of the cache key
      *
-     * @param PrismicException $exception
+     * @param mixed[] $options
+     * @return string
+     * @throws NoSuchEntityException
+     */
+    private function getLanguage(array $options = []): string
+    {
+        return (string) ($this->getOptions($options)['lang'] ?? '');
+    }
+
+    /**
+     * Store and website the document is requested for, the rest of the cache key
+     *
+     * @return int[]
+     * @throws NoSuchEntityException
+     */
+    private function getScope(): array
+    {
+        $store = $this->storeManager->getStore();
+
+        return [(int) $store->getId(), (int) $store->getWebsiteId()];
+    }
+
+    /**
+     * An unreachable repository means the document cannot be delivered, it is not a fatal error.
+     * The response is incomplete though, so it must not be cached as if it were complete.
+     *
+     * @param Throwable $exception
      * @return void
      */
-    private function logApiFailure(PrismicException $exception): void
+    private function logApiFailure(Throwable $exception): void
     {
-        $this->logger->warning(
-            'Prismic API request failed, treating the document as not found: ' . $exception->getMessage()
+        $this->state->markContentUnavailable();
+
+        $this->logger->debug(
+            'Prismic document could not be delivered: ' . $exception->getMessage()
         );
     }
 }

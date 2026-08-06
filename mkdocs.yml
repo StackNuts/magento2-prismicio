@@ -10,6 +10,7 @@ nav:
   - Introduction: index.md
   - Basics:
     - Installation: basics/installation.md
+    - Upgrading: basics/upgrading.md
     - Configuration: basics/configuration.md
     - Content types: basics/content-types.md
   - Frontend:
