@@ -112,7 +112,7 @@ class Scaffold extends Command
     protected function execute(
         InputInterface $input,
         OutputInterface $output
-    ) {
+    ): int {
         $this->input = $input;
         $this->output = $output;
 
@@ -124,6 +124,8 @@ class Scaffold extends Command
         $this->copyTemplateStubs();
         $this->createPrismicRoute();
         $this->showPrismicJson();
+
+        return Command::SUCCESS;
     }
 
     /**

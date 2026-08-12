@@ -32,7 +32,7 @@ class SliceMachineInit extends Command
         $this->addOption('store-code', 's', InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY, 'Give store id|code to use for the configuration');
     }
 
-    protected function execute(InputInterface $input, OutputInterface $output)
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $storeManager = $this->storeManager;
         $filesystem = $this->filesystem;
