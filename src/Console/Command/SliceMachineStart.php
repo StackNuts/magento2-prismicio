@@ -26,7 +26,7 @@ class SliceMachineStart extends Command
         $this->addOption('store-code', 's', InputOption::VALUE_REQUIRED, 'Give store id|code to use for the configuration');
     }
 
-    protected function execute(InputInterface $input, OutputInterface $output)
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $storeId = $input->getOption('store-code');
         $store = $this->storeManager->getStore($storeId);
