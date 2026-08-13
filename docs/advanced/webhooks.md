@@ -21,7 +21,7 @@ The module provides webhook support for content updates and debug options for de
 2. Navigate to Webhooks
 3. Add a new webhook:
    ```
-   URL: https://your-store.com/prismicio/webhook
+   URL: https://your-store.com/prismicio/webhook/cache
    Secret: [Your configured secret]
    ```
 
