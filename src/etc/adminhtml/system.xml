@@ -125,6 +125,22 @@
                 </field>
             </group>
 
+            <group id="block_cache" translate="true" showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>Block Cache</label>
+                <field id="enabled" showInDefault="1" showInWebsite="1" showInStore="1" translate="label" type="select">
+                    <label>Enabled</label>
+                    <source_model>Magento\Config\Model\Config\Source\Enabledisable</source_model>
+                    <comment><![CDATA[Caches rendered HTML for blocks that opt in (Elgentos\PrismicIO\Block\TemplateCacheable, and StaticBlock) using Magento's own block cache. Also switches the prismicio/webhook/cache webhook from flushing the whole page cache to purging just the changed documents.]]></comment>
+                </field>
+                <field id="lifetime" showInDefault="1" showInWebsite="1" showInStore="1" translate="label comment" type="text">
+                    <label>Cache Lifetime (seconds)</label>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                    <comment>How long a cached block is served before Magento re-renders it, regardless of any webhook purge.</comment>
+                </field>
+            </group>
+
             <group id="sitemap" translate="true" showInDefault="1" showInWebsite="1" showInStore="1">
                 <label>Sitemap</label>
                 <field id="content_types" showInDefault="1" showInWebsite="1" showInStore="1" translate="label" type="multiselect">

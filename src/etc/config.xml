@@ -33,6 +33,10 @@
                 <sync_disabled_products>0</sync_disabled_products>
                 <visibility>4</visibility>
             </integration_fields>
+            <block_cache>
+                <enabled>0</enabled>
+                <lifetime>3600</lifetime>
+            </block_cache>
         </prismicio>
         <sitemap>
             <prismic>

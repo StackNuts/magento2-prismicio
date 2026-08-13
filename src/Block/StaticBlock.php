@@ -9,12 +9,16 @@ use Elgentos\PrismicIO\Exception\DocumentNotFoundException;
 use Elgentos\PrismicIO\Model\Api;
 use Elgentos\PrismicIO\ViewModel\DocumentResolver;
 use Elgentos\PrismicIO\ViewModel\LinkResolver;
+use Magento\Framework\DataObject\IdentityInterface;
 use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Framework\View\Element\Context;
+use Magento\Store\Model\StoreManagerInterface;
 use stdClass;
 
-class StaticBlock extends AbstractBlock
+class StaticBlock extends AbstractBlock implements IdentityInterface
 {
+    use DocumentCacheableTrait;
+
     private string $contentType;
     private ?string $identifier;
 
@@ -23,6 +27,7 @@ class StaticBlock extends AbstractBlock
         DocumentResolver         $documentResolver,
         LinkResolver             $linkResolver,
         private readonly Api     $api,
+        StoreManagerInterface    $storeManager,
         string                   $contentType = 'static_block',
         ?string                  $identifier = null,
         array                    $data = []
@@ -34,8 +39,23 @@ class StaticBlock extends AbstractBlock
             $data
         );
 
+        $this->storeManager = $storeManager;
         $this->contentType = $contentType;
         $this->identifier = $identifier;
+    }
+
+    /**
+     * The document isn't resolved until _toHtml() runs, too late for a cache key - use the
+     * statically-known identifier/content type/reference instead.
+     */
+    public function getCacheKeyInfo()
+    {
+        $key = parent::getCacheKeyInfo();
+        $key[] = $this->contentType;
+        $key[] = $this->identifier;
+        $key[] = $this->getReference();
+
+        return $key;
     }
 
     /**
@@ -99,7 +119,7 @@ class StaticBlock extends AbstractBlock
         $html = '';
         foreach ($this->getChildNames() as $childName) {
             $useCache = ! $this->updateChildDocumentWithDocument($childName);
-            $html    .= $this->getChildHtml($childName, $useCache);
+            $html .= $this->getChildHtml($childName, $useCache);
         }
 
         return $html;
